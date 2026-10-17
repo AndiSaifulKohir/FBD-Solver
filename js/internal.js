@@ -21,16 +21,16 @@
  * Supported frames: one connected tree of members (no closed loops), with every
  * load and support at a joint or on a member.
  */
-import { directionOf } from './mathutil.js';
+import { directionOf, portionParts } from './mathutil.js';
 import { buildFrame, TOL } from './frame.js';
 
 const ZERO = 1e-9;
 const SAMPLES = 24; // samples per segment between load points
 
 export const DIAGRAM_INFO = {
-  N: { title: 'Normal force N', unit: 'kN', note: 'Tension is positive. In a truss, line thickness shows the size of the force.' },
-  V: { title: 'Shear force V (transversal)', unit: 'kN', note: 'Positive shear turns a segment clockwise.' },
-  M: { title: 'Bending moment M', unit: 'kN·m', note: 'Drawn on the tension side. Positive is sagging (tension on the underside of a horizontal member).' },
+  N: { title: 'Normal force N', type: 'force', note: 'Tension is positive. In a truss, line thickness shows the size of the force.' },
+  V: { title: 'Shear force V (transversal)', type: 'force', note: 'Positive shear turns a segment clockwise.' },
+  M: { title: 'Bending moment M', type: 'moment', note: 'Drawn on the tension side. Positive is sagging (tension on the underside of a horizontal member).' },
 };
 
 const tidy = (v) => (Math.abs(v) < ZERO ? 0 : v);
@@ -38,6 +38,7 @@ const tidy = (v) => (Math.abs(v) < ZERO ? 0 : v);
 const unavailable = (message) => ({ status: 'unavailable', message, members: [], summary: null });
 
 export function internalForces(problem, solution) {
+  if (solution?.status === 'invalid') return unavailable(solution.message);
   if (!solution || solution.status !== 'solved') {
     return unavailable('Solve the reactions first. Internal forces need a stable, determinate set of supports.');
   }
@@ -117,9 +118,9 @@ export function internalForces(problem, solution) {
       const m = members[j];
       for (const p of m.points) list.push(p.load);
       for (const u of m.udls) {
-        const ell = u.hi - u.lo;
-        const sc = u.lo + ell / 2;
-        list.push({ x: m.x0 + m.t[0] * sc, y: m.y0 + m.t[1] * sc, fx: u.wx * ell, fy: u.wy * ell, c: 0 });
+        for (const p of portionParts(u)) {
+          list.push({ x: m.x0 + m.t[0] * p.s, y: m.y0 + m.t[1] * p.s, fx: p.fx, fy: p.fy, c: 0 });
+        }
       }
     }
     return list;
@@ -140,11 +141,7 @@ export function internalForces(problem, solution) {
     for (const l of base) add(l.x, l.y, l.fx, l.fy, l.c);
     for (const p of m.points) if (p.s <= mid) add(p.load.x, p.load.y, p.load.fx, p.load.fy, p.load.c);
     for (const u of m.udls) {
-      const ell = Math.min(u.hi, s) - u.lo;
-      if (ell > 0) {
-        const sc = u.lo + ell / 2;
-        add(m.x0 + m.t[0] * sc, m.y0 + m.t[1] * sc, u.wx * ell, u.wy * ell, 0);
-      }
+      for (const p of portionParts(u, s)) add(m.x0 + m.t[0] * p.s, m.y0 + m.t[1] * p.s, p.fx, p.fy, 0);
     }
     return {
       N: tidy(-(fx * m.t[0] + fy * m.t[1])),
@@ -164,13 +161,29 @@ export function internalForces(problem, solution) {
       const s0 = breaks[i];
       const s1 = breaks[i + 1];
       const mid = (s0 + s1) / 2;
-      const positions = [];
-      for (let j = 0; j <= SAMPLES; j++) positions.push({ s: s0 + ((s1 - s0) * j) / SAMPLES, edge: j === 0 || j === SAMPLES });
+      const samples = [];
+      for (let j = 0; j <= SAMPLES; j++) samples.push(s0 + ((s1 - s0) * j) / SAMPLES);
+      const shear = samples.map((s) => evaluate(m, base, s, mid).V);
+      const positions = samples.map((s, j) => ({ s, edge: j === 0 || j === SAMPLES }));
 
-      // V is linear inside a segment, so M peaks exactly where V crosses zero.
-      const v0 = evaluate(m, base, s0, mid).V;
-      const v1 = evaluate(m, base, s1, mid).V;
-      if (v0 * v1 < 0) positions.push({ s: s0 + ((s1 - s0) * v0) / (v0 - v1), edge: false });
+      // M peaks where V crosses zero. Between samples, bisect to find that point exactly.
+      for (let j = 0; j < SAMPLES; j++) {
+        if (shear[j] * shear[j + 1] < 0) {
+          let a = samples[j];
+          let b = samples[j + 1];
+          let va = shear[j];
+          for (let it = 0; it < 50; it++) {
+            const c = (a + b) / 2;
+            const vc = evaluate(m, base, c, mid).V;
+            if (vc * va <= 0) b = c;
+            else {
+              a = c;
+              va = vc;
+            }
+          }
+          positions.push({ s: (a + b) / 2, edge: false });
+        }
+      }
 
       positions.sort((p, q) => p.s - q.s);
       for (const p of positions) stations.push({ s: p.s, edge: p.edge, ...evaluate(m, base, p.s, mid) });

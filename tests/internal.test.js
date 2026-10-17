@@ -186,7 +186,7 @@ test('disconnected members are reported', () => {
     ],
   });
   assert.equal(inf.status, 'unavailable');
-  assert.match(inf.message, /not all connected/);
+  assert.match(inf.message, /not connected/);
 });
 
 /* ---------- drawing ---------- */

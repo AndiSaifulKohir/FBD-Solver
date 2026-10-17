@@ -21,7 +21,7 @@
  *   roller -> one force along its direction (default 90 degrees, i.e. up)
  *   fixed  -> Rx, Ry and a reaction moment
  */
-import { clean, directionOf, supportLabel, momentAbout, rref } from './mathutil.js';
+import { clean, directionOf, supportLabel, momentAbout, rref, loadParts, portionParts } from './mathutil.js';
 import { buildFrame, inBranch } from './frame.js';
 
 export { clean, directionOf, supportLabel };
@@ -36,6 +36,7 @@ const tidy = (v) => (Math.abs(v) < EPS ? 0 : v);
 export function resolveLoads(problem) {
   const forces = [];
   const moments = [];
+  const distributed = [];
 
   problem.forces.forEach((f, i) => {
     const [dx, dy] = directionOf(f.angle);
@@ -52,24 +53,40 @@ export function resolveLoads(problem) {
 
   problem.distributed.forEach((d, i) => {
     const [dx, dy] = directionOf(d.angle);
-    const total = d.w * Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
-    forces.push({
-      id: d.id,
-      label: `W${i + 1}`,
-      kind: 'distributed',
-      x: (d.x1 + d.x2) / 2,
-      y: (d.y1 + d.y2) / 2,
-      fx: total * dx,
-      fy: total * dy,
-      total,
-    });
+    const w1 = d.w;
+    const w2 = d.w2 ?? d.w;
+    const len = Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
+    const ux = len > 0 ? (d.x2 - d.x1) / len : 0;
+    const uy = len > 0 ? (d.y2 - d.y1) / len : 0;
+    const label = `W${i + 1}`;
+
+    // A load that varies linearly acts as a uniform part plus a triangular part.
+    for (const part of loadParts(w1, w2, len)) {
+      if (part.force === 0) continue;
+      forces.push({
+        id: d.id,
+        label,
+        kind: 'distributed',
+        part: true,
+        x: d.x1 + ux * part.at,
+        y: d.y1 + uy * part.at,
+        fx: part.force * dx,
+        fy: part.force * dy,
+      });
+    }
+
+    // Single resultant for display: total force and where it acts.
+    const total = ((w1 + w2) / 2) * len;
+    const sum = w1 + w2;
+    const at = Math.abs(sum) > 1e-12 ? (len * (w1 + 2 * w2)) / (3 * sum) : len / 2;
+    distributed.push({ id: d.id, label, total, w1, w2, x: d.x1 + ux * at, y: d.y1 + uy * at });
   });
 
   problem.moments.forEach((m, i) => {
     moments.push({ id: m.id, label: `C${i + 1}`, value: m.value });
   });
 
-  return { forces, moments };
+  return { forces, moments, distributed };
 }
 
 /**
@@ -108,30 +125,26 @@ function buildUnknowns(supports) {
  * Extra equations from internal hinges. Returns { rows } or { error }.
  * Each row is "moment about the hinge of one branch = 0".
  */
-function hingeEquations(problem, supports, unknowns) {
+function hingeEquations(problem, supports, unknowns, frame) {
   const hinges = problem.hinges ?? [];
   if (hinges.length === 0) return { rows: [] };
 
-  const frame = buildFrame(problem);
-  if (frame.error) return { error: frame.error };
-
-  const stray = 'Every support and load must sit on a member or at a joint when hinges are used.';
   const supportLoc = new Map();
   for (const s of supports) {
     const loc = frame.locate(s.x, s.y);
-    if (!loc) return { error: stray };
+    if (!loc) return { error: 'A support is not on a member. Place it on a member or joint.' };
     supportLoc.set(s.id, loc);
   }
   const forceLoc = [];
   for (const f of problem.forces) {
     const loc = frame.locate(f.x, f.y);
-    if (!loc) return { error: stray };
+    if (!loc) return { error: 'A point force is not on a member. Place it on a member or joint.' };
     forceLoc.push(loc);
   }
   const momentLoc = [];
   for (const c of problem.moments) {
     const loc = frame.locate(c.x, c.y);
-    if (!loc) return { error: stray };
+    if (!loc) return { error: 'An applied moment is not on a member. Place it on a member or joint.' };
     momentLoc.push(loc);
   }
 
@@ -169,9 +182,9 @@ function hingeEquations(problem, supports, unknowns) {
       for (const si of br.segs) {
         const sg = frame.segments[si];
         for (const u of sg.udls) {
-          const ell = u.hi - u.lo;
-          const sc = u.lo + ell / 2;
-          known += momentAbout(h.x, h.y, sg.x0 + sg.t[0] * sc, sg.y0 + sg.t[1] * sc, u.wx * ell, u.wy * ell);
+          for (const p of portionParts(u)) {
+            known += momentAbout(h.x, h.y, sg.x0 + sg.t[0] * p.s, sg.y0 + sg.t[1] * p.s, p.fx, p.fy);
+          }
         }
       }
 
@@ -189,7 +202,8 @@ function hingeEquations(problem, supports, unknowns) {
  * Solve for support reactions.
  *
  * status:
- *   'incomplete'    no supports yet, or the geometry cannot be used
+ *   'incomplete'    no supports yet
+ *   'invalid'       member geometry or item attachment is invalid
  *   'unstable'      loads cannot be balanced, or reactions are not independent
  *   'indeterminate' more unknown reactions than equilibrium equations
  *   'solved'        unique solution found (see `warning` for partial restraint)
@@ -206,6 +220,9 @@ export function solve(problem) {
     degrees: null,
     warning: null,
   };
+
+  const frame = buildFrame(problem);
+  if (frame.error) return { ...base, status: 'invalid', message: frame.error };
 
   if (supports.length === 0) {
     return { ...base, status: 'incomplete', message: 'Add at least one support to hold the body in place.' };
@@ -224,8 +241,8 @@ export function solve(problem) {
   }
   for (const m of loads.moments) known[2] += m.value;
 
-  const hinge = hingeEquations(problem, supports, unknowns);
-  if (hinge.error) return { ...base, status: 'incomplete', message: hinge.error };
+  const hinge = hingeEquations(problem, supports, unknowns, frame);
+  if (hinge.error) return { ...base, status: 'invalid', message: hinge.error };
 
   const rows = [
     ...['ΣFx', 'ΣFy', `ΣM${supportLabel(0)}`].map((name, r) => ({

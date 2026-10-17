@@ -4,17 +4,23 @@
  * {
  *   "name": "Simply supported beam",
  *   "mode": "frame" | "truss",
+ *   "units": { "length": "m", "force": "kN" },   (display only, see units.js)
  *   "members":     [{ "id", "x1", "y1", "x2", "y2" }],
  *   "supports":    [{ "id", "type": "pin" | "roller" | "fixed", "x", "y", "angle"? }],
  *   "forces":      [{ "id", "x", "y", "magnitude", "angle" }],
  *   "moments":     [{ "id", "x", "y", "value" }],
- *   "distributed": [{ "id", "x1", "y1", "x2", "y2", "w", "angle" }],
+ *   "distributed": [{ "id", "x1", "y1", "x2", "y2", "w", "w2", "angle" }],   (w at the start, w2 at the end)
  *   "hinges":      [{ "id", "x", "y" }]
  * }
+ *
+ * Stored values are always metres, kilonewtons and degrees. "units" only
+ * changes how they are shown and typed.
  *
  * In frame mode the whole structure is one rigid body, joined by rigid joints
  * except at hinges. In truss mode every member is a pin-jointed bar.
  */
+
+import { LENGTH_UNITS, FORCE_UNITS, DEFAULT_UNITS } from './units.js';
 
 export const KINDS = {
   member: 'members',
@@ -35,8 +41,18 @@ export function uid(prefix = 'i') {
 
 export const MODES = ['frame', 'truss'];
 
-export function emptyProblem(name = 'Untitled problem', mode = 'frame') {
-  return { name, mode, members: [], supports: [], forces: [], moments: [], distributed: [], hinges: [] };
+export function emptyProblem(name = 'Untitled problem', mode = 'frame', units = DEFAULT_UNITS) {
+  return {
+    name,
+    mode,
+    units: { ...units },
+    members: [],
+    supports: [],
+    forces: [],
+    moments: [],
+    distributed: [],
+    hinges: [],
+  };
 }
 
 /** Which keys hold the draggable points of each item kind. */
@@ -73,9 +89,17 @@ export function normalizeProblem(raw) {
 
   const mode = raw.mode ?? 'frame';
   if (!MODES.includes(mode)) throw new Error(`mode must be one of: ${MODES.join(', ')}.`);
+  const units = { ...DEFAULT_UNITS, ...(raw.units ?? {}) };
+  if (!Object.hasOwn(LENGTH_UNITS, units.length)) {
+    throw new Error(`units.length must be one of: ${Object.keys(LENGTH_UNITS).join(', ')}.`);
+  }
+  if (!Object.hasOwn(FORCE_UNITS, units.force)) {
+    throw new Error(`units.force must be one of: ${Object.keys(FORCE_UNITS).join(', ')}.`);
+  }
   const problem = emptyProblem(
     typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : 'Untitled problem',
-    mode
+    mode,
+    units
   );
   const seen = new Set();
 
@@ -150,13 +174,15 @@ export function normalizeProblem(raw) {
 
   list('distributed').forEach((d, i) => {
     const at = `distributed[${i}]`;
+    const w = num(d.w, `${at}.w`);
     problem.distributed.push({
       id: idFor(d, 'w'),
       x1: num(d.x1, `${at}.x1`),
       y1: num(d.y1, `${at}.y1`),
       x2: num(d.x2, `${at}.x2`),
       y2: num(d.y2, `${at}.y2`),
-      w: num(d.w, `${at}.w`),
+      w,
+      w2: num(d.w2, `${at}.w2`, w), // end intensity; defaults to uniform
       angle: num(d.angle, `${at}.angle`, 270),
     });
   });

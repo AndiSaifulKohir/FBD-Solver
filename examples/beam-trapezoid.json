@@ -1,0 +1,9 @@
+{
+  "name": "Beam with trapezoidal load",
+  "members": [{ "id": "m1", "x1": 0, "y1": 0, "x2": 8, "y2": 0 }],
+  "supports": [
+    { "id": "s1", "type": "pin", "x": 0, "y": 0 },
+    { "id": "s2", "type": "roller", "x": 8, "y": 0, "angle": 90 }
+  ],
+  "distributed": [{ "id": "w1", "x1": 2, "y1": 0, "x2": 6, "y2": 0, "w": 2, "w2": 6, "angle": -90 }]
+}

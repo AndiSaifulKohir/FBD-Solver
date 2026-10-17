@@ -49,3 +49,34 @@ export function rref(M, nCols, tol) {
   }
   return { pivots, rank: r };
 }
+
+/**
+ * A load that varies linearly from intensity wa to wb over a length, split into
+ * a uniform part and a triangular part. Together they give the exact net force
+ * and moment, even when the intensity changes sign along the span.
+ * `at` is the distance of each part's resultant from the start.
+ */
+export function loadParts(wa, wb, length) {
+  return [
+    { force: wa * length, at: length / 2 },
+    { force: ((wb - wa) * length) / 2, at: (2 * length) / 3 },
+  ];
+}
+
+/**
+ * The same for a load portion stored on a segment: { lo, hi, wa, wb, dx, dy },
+ * where lo..hi is the loaded stretch, wa and wb the intensities there and
+ * (dx, dy) the load direction. With `upTo`, only the part before that position.
+ * Returns point forces { fx, fy, s } with s measured along the segment.
+ */
+export function portionParts(u, upTo = Infinity) {
+  const hi = Math.min(u.hi, upTo);
+  const ell = hi - u.lo;
+  if (!(ell > 0)) return [];
+  const slope = (u.wb - u.wa) / (u.hi - u.lo);
+  return loadParts(u.wa, u.wa + slope * ell, ell).map((p) => ({
+    fx: p.force * u.dx,
+    fy: p.force * u.dy,
+    s: u.lo + p.at,
+  }));
+}

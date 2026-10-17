@@ -1,21 +1,108 @@
 /**
  * SVG rendering. Takes a problem and its solution, returns SVG markup.
- * World coordinates are metres with +y up; screen coordinates are pixels with +y down.
+ *
+ * World coordinates are metres with +y up. Screen coordinates are pixels with +y
+ * down. The camera maps one to the other, so zooming and panning only change
+ * the camera. Symbols and arrows keep their pixel size at any zoom.
  */
 import { directionOf } from './mathutil.js';
 import { fmt } from './format.js';
 import { pointKeys } from './model.js';
 import { DIAGRAM_INFO } from './internal.js';
+import { toDisplay, unitLabel, fromDisplay } from './units.js';
+import { dimensionChains, boundsOf } from './dimensions.js';
 
-export const SCALE = 60; // pixels per metre
-export const ORIGIN = { x: 150, y: 520 };
 export const VIEW = { w: 1000, h: 620 };
-export const SNAP = 0.5; // metres
 
-export const toScreen = (x, y) => [ORIGIN.x + x * SCALE, ORIGIN.y - y * SCALE];
-export const toWorld = (px, py) => ({ x: (px - ORIGIN.x) / SCALE, y: (ORIGIN.y - py) / SCALE });
+/* ---------- camera ---------- */
+
+export const MIN_SCALE = 8; // pixels per metre
+export const MAX_SCALE = 500;
+
+/** World to screen: screen = origin + world * scale (y flipped). Mutated by zoom, pan and fit. */
+export const camera = { scale: 60, ox: 150, oy: 520 };
+
+export const toScreen = (x, y) => [camera.ox + x * camera.scale, camera.oy - y * camera.scale];
+export const toWorld = (px, py) => ({ x: (px - camera.ox) / camera.scale, y: (camera.oy - py) / camera.scale });
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/** Zoom by a factor, keeping the world point under screen position (px, py) fixed. */
+export function zoomAt(factor, px, py) {
+  const w = toWorld(px, py);
+  camera.scale = clamp(camera.scale * factor, MIN_SCALE, MAX_SCALE);
+  camera.ox = px - w.x * camera.scale;
+  camera.oy = py + w.y * camera.scale;
+}
+
+export function panBy(dx, dy) {
+  camera.ox += dx;
+  camera.oy += dy;
+}
+
+/**
+ * Centre the drawing in the view and zoom to fit it. Leaves room around it for
+ * loads, reaction labels and dimension lines. An empty problem is centred on a
+ * typical 10 m by 6 m area.
+ */
+export function fitCamera(problem, { dims = true } = {}) {
+  const b = boundsOf(problem);
+  if (!b) {
+    camera.scale = 60;
+    camera.ox = VIEW.w / 2 - 5 * camera.scale;
+    camera.oy = VIEW.h / 2 + 3 * camera.scale;
+    return;
+  }
+  const pad = { left: dims ? 150 : 130, right: 130, top: 120, bottom: dims ? 130 : 100 };
+  const availW = VIEW.w - pad.left - pad.right;
+  const availH = VIEW.h - pad.top - pad.bottom;
+  const bw = b.maxX - b.minX;
+  const bh = b.maxY - b.minY;
+  const sx = bw > 1e-9 ? availW / bw : Infinity;
+  const sy = bh > 1e-9 ? availH / bh : Infinity;
+  const fitted = Math.min(sx, sy, 100);
+  camera.scale = clamp(Number.isFinite(fitted) ? fitted : 60, 15, MAX_SCALE);
+
+  const cx = (pad.left + VIEW.w - pad.right) / 2;
+  const cy = (pad.top + VIEW.h - pad.bottom) / 2;
+  camera.ox = cx - ((b.minX + b.maxX) / 2) * camera.scale;
+  camera.oy = cy + ((b.minY + b.maxY) / 2) * camera.scale;
+}
+
+/**
+ * Grid spacing and snap step for the current zoom and length unit. Lines are at
+ * least 40 px apart and sit on round numbers of the display unit (1, 2, 5, 10...).
+ * The snap step is a round fraction of the grid spacing.
+ */
+export function gridSteps() {
+  const unit = fromDisplay('length', 1); // metres per display unit
+  const minDisp = 40 / (camera.scale * unit);
+  const exp = Math.floor(Math.log10(minDisp));
+  const base = 10 ** exp;
+  const m = [1, 2, 5, 10].find((k) => k * base >= minDisp * (1 - 1e-12));
+  const stepDisp = m * base;
+  const snapDisp = m === 2 ? stepDisp / 4 : m === 5 ? stepDisp / 5 : stepDisp / 2;
+  const round = (v) => +v.toPrecision(12);
+  return {
+    stepDisp: round(stepDisp),
+    snapDisp: round(snapDisp),
+    stepM: round(stepDisp * unit),
+    snapM: round(snapDisp * unit),
+  };
+}
+
+/** Snap step in metres for the current zoom and unit. */
+export const snapStep = () => gridSteps().snapM;
+
+/* ---------- display helpers ---------- */
 
 const r2 = (n) => Math.round(n * 100) / 100;
+
+const fF = (v) => fmt(toDisplay('force', v));
+const fM = (v) => fmt(toDisplay('moment', v));
+const fL = (v) => fmt(toDisplay('length', v));
+const fD = (v) => fmt(toDisplay('dist', v));
+const sgn = (text, v) => `${v > 0 ? '+' : ''}${text}`;
 
 /** Screen-space unit vector for a world angle in degrees. */
 function screenDir(angle) {
@@ -92,24 +179,129 @@ const group = (kind, id, selected, inner) =>
 /* ---------- grid ---------- */
 
 function grid() {
+  const { stepM, stepDisp } = gridSteps();
+  const left = toWorld(0, 0).x;
+  const right = toWorld(VIEW.w, 0).x;
+  const top = toWorld(0, 0).y;
+  const bottom = toWorld(0, VIEW.h).y;
   let s = '<g class="grid">';
-  const xMin = Math.ceil(-ORIGIN.x / SCALE);
-  const xMax = Math.floor((VIEW.w - ORIGIN.x) / SCALE);
-  const yMin = Math.ceil((ORIGIN.y - VIEW.h) / SCALE);
-  const yMax = Math.floor(ORIGIN.y / SCALE);
 
-  for (let x = xMin; x <= xMax; x++) {
-    const [px] = toScreen(x, 0);
-    s += `<line class="${x === 0 ? 'axis' : ''}" x1="${px}" y1="0" x2="${px}" y2="${VIEW.h}"/>`;
-    if (x >= 0 && x % 2 === 0) s += `<text x="${px + 4}" y="${VIEW.h - 6}">${x}</text>`;
+  for (let i = Math.ceil(left / stepM); i <= Math.floor(right / stepM); i++) {
+    const [px] = toScreen(i * stepM, 0);
+    s += `<line class="${i === 0 ? 'axis' : ''}" x1="${r2(px)}" y1="0" x2="${r2(px)}" y2="${VIEW.h}"/>`;
+    s += `<text x="${r2(px + 4)}" y="${VIEW.h - 6}">${fmt(i * stepDisp)}</text>`;
   }
-  for (let y = yMin; y <= yMax; y++) {
-    const [, py] = toScreen(0, y);
-    s += `<line class="${y === 0 ? 'axis' : ''}" x1="0" y1="${py}" x2="${VIEW.w}" y2="${py}"/>`;
-    if (y > 0 && y % 2 === 0) s += `<text x="4" y="${py - 4}">${y}</text>`;
+  for (let j = Math.ceil(bottom / stepM); j <= Math.floor(top / stepM); j++) {
+    const [, py] = toScreen(0, j * stepM);
+    s += `<line class="${j === 0 ? 'axis' : ''}" x1="0" y1="${r2(py)}" x2="${VIEW.w}" y2="${r2(py)}"/>`;
+    s += `<text x="4" y="${r2(py - 4)}">${fmt(j * stepDisp)}</text>`;
   }
-  s += `<text x="${VIEW.w - 22}" y="${VIEW.h - 6}">m</text></g>`;
+  s += `<text class="grid-unit" x="${VIEW.w - 6}" y="${VIEW.h - 22}" text-anchor="end">${unitLabel('length')}</text></g>`;
   return s;
+}
+
+/* ---------- dimensions ---------- */
+
+/**
+ * Which side of the drawing has fewer horizontal arrows (loads and reactions) at its
+ * edge. The dimension column goes there. Ties go to the left.
+ */
+function dimensionSide(problem, solution, minX, maxX) {
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
+  let left = 0;
+  let right = 0;
+  for (const f of problem.forces) {
+    const [dx] = directionOf(f.angle);
+    if (Math.abs(dx) <= 0.5) continue;
+    if (near(f.x, minX) && dx > 0) left++; // the arrow comes in from the left
+    if (near(f.x, maxX) && dx < 0) right++;
+  }
+  if (solution && solution.status === 'solved') {
+    for (const r of solution.reactions) {
+      if (near(r.x, minX) && r.fx < -1e-9) left++; // the reaction points left
+      if (near(r.x, maxX) && r.fx > 1e-9) right++;
+    }
+  }
+  return right < left ? 'right' : 'left';
+}
+
+/**
+ * Chain dimensions between every distinct position you have defined: a row of
+ * distances under the drawing and a column on its left, each with an overall
+ * dimension when there are three or more positions.
+ */
+function dimensionsSvg(problem, solution) {
+  const { points, xs, ys } = dimensionChains(problem);
+  if (points.length < 2 || (xs.length < 2 && ys.length < 2)) return '';
+
+  const screen = points.map((p) => ({ ...p, sx: toScreen(p.x, p.y)[0], sy: toScreen(p.x, p.y)[1] }));
+  const lowest = Math.max(...screen.map((p) => p.sy));
+  const leftmost = Math.min(...screen.map((p) => p.sx));
+  const rightmost = Math.max(...screen.map((p) => p.sx));
+  const tick = (x, y) => `<line class="dim-tick" x1="${r2(x - 4)}" y1="${r2(y + 4)}" x2="${r2(x + 4)}" y2="${r2(y - 4)}"/>`;
+  const near = (a, b) => Math.abs(a - b) < 1e-6;
+  let s = '<g class="dims">';
+
+  if (xs.length >= 2) {
+    const row = (list, yd, extend) => {
+      let out = '';
+      list.forEach((x, i) => {
+        const px = toScreen(x, 0)[0];
+        const owners = screen.filter((p) => near(p.x, x));
+        const from = Math.max(...owners.map((p) => p.sy)) + 8;
+        out += `<line class="dim-ext" x1="${r2(px)}" y1="${r2(from)}" x2="${r2(px)}" y2="${r2((extend[i] ?? yd) + 6)}"/>`;
+        if (i < list.length - 1) {
+          const nx = toScreen(list[i + 1], 0)[0];
+          out += `<line class="dim-line" x1="${r2(px)}" y1="${r2(yd)}" x2="${r2(nx)}" y2="${r2(yd)}"/>`;
+          if (nx - px >= 30) {
+            out += `<text class="dim-text" x="${r2((px + nx) / 2)}" y="${r2(yd - 5)}" text-anchor="middle">${fL(list[i + 1] - x)}</text>`;
+          }
+        }
+        out += tick(px, yd);
+      });
+      return out;
+    };
+    const y1 = lowest + 78;
+    const y2 = y1 + 26;
+    const total = xs.length >= 3;
+    const extend = total ? { 0: y2, [xs.length - 1]: y2 } : {};
+    s += row(xs, y1, extend);
+    if (total) s += row([xs[0], xs[xs.length - 1]], y2, {});
+    s += `<text class="dim-text dim-unit" x="${r2(toScreen(xs[xs.length - 1], 0)[0] + 10)}" y="${r2(y1 + 4)}">${unitLabel('length')}</text>`;
+  }
+
+  if (ys.length >= 2) {
+    // Put the column on the side with fewer horizontal arrows, so it stays clear of them.
+    const side = dimensionSide(problem, solution, xs[0], xs[xs.length - 1]);
+    const dir = side === 'right' ? 1 : -1; // which way the column grows from the drawing
+    const col = (list, xd, extend) => {
+      let out = '';
+      list.forEach((y, i) => {
+        const py = toScreen(0, y)[1];
+        const owners = screen.filter((p) => near(p.y, y));
+        const from = side === 'right' ? Math.max(...owners.map((p) => p.sx)) + 8 : Math.min(...owners.map((p) => p.sx)) - 8;
+        out += `<line class="dim-ext" x1="${r2(from)}" y1="${r2(py)}" x2="${r2((extend[i] ?? xd) + dir * 6)}" y2="${r2(py)}"/>`;
+        if (i < list.length - 1) {
+          const ny = toScreen(0, list[i + 1])[1];
+          out += `<line class="dim-line" x1="${r2(xd)}" y1="${r2(py)}" x2="${r2(xd)}" y2="${r2(ny)}"/>`;
+          if (Math.abs(py - ny) >= 30) {
+            const cy = (py + ny) / 2;
+            const tx = xd + dir * (side === 'right' ? 17 : 5); // rotated text grows to the left of its baseline
+            out += `<text class="dim-text" transform="rotate(-90 ${r2(tx)} ${r2(cy)})" x="${r2(tx)}" y="${r2(cy)}" text-anchor="middle">${fL(list[i + 1] - y)}</text>`;
+          }
+        }
+        out += tick(xd, py);
+      });
+      return out;
+    };
+    const x1 = side === 'right' ? rightmost + 78 : leftmost - 78;
+    const x2 = x1 + dir * 26;
+    const total = ys.length >= 3;
+    const extend = total ? { 0: x2, [ys.length - 1]: x2 } : {};
+    s += col(ys, x1, extend);
+    if (total) s += col([ys[0], ys[ys.length - 1]], x2, {});
+  }
+  return `${s}</g>`;
 }
 
 /* ---------- items ---------- */
@@ -161,7 +353,7 @@ function trussBarSvg(m, selected, bar) {
   const state = bar ? bar.state : 'idle';
   let label = '';
   if (bar) {
-    const text = state === 'zero' ? '0' : `${fmt(Math.abs(bar.force))} ${state === 'tension' ? 'T' : 'C'}`;
+    const text = state === 'zero' ? '0' : `${fF(Math.abs(bar.force))} ${state === 'tension' ? 'T' : 'C'}`;
     label = `<text class="label" x="${r2((x1 + x2) / 2)}" y="${r2((y1 + y2) / 2 + 4)}" text-anchor="middle">${text}</text>`;
   }
   const halo = selected ? `<line class="bar-halo" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>` : '';
@@ -228,7 +420,7 @@ function forceSvg(f, selected) {
     `<line class="hit" x1="${r2(x0)}" y1="${r2(y0)}" x2="${tx}" y2="${ty}"/>` +
     arrow(x0, y0, tx, ty) +
     `<circle class="dot" cx="${tx}" cy="${ty}" r="3.5"/>` +
-    tailLabel(x0, y0, sx, sy, `${fmt(f.magnitude)} kN`);
+    tailLabel(x0, y0, sx, sy, `${fF(f.magnitude)} ${unitLabel('force')}`);
   return group('force', f.id, selected, inner);
 }
 
@@ -238,39 +430,63 @@ function momentSvg(c, selected) {
     `<circle class="hit-fill" cx="${cx}" cy="${cy}" r="30"/>` +
     momentArc(cx, cy, c.value, 24) +
     `<circle class="dot" cx="${cx}" cy="${cy}" r="3.5"/>` +
-    `<text class="label" x="${cx}" y="${r2(cy - 34)}" text-anchor="middle">${fmt(Math.abs(c.value))} kN·m</text>`;
+    `<text class="label" x="${cx}" y="${r2(cy - 34)}" text-anchor="middle">${fM(Math.abs(c.value))} ${unitLabel('moment')}</text>`;
   return group('moment', c.id, selected, inner);
 }
 
+/**
+ * A distributed load. Arrow length follows the intensity, so a triangular or
+ * trapezoidal load shows its shape. Where the intensity is negative the arrows
+ * point the other way.
+ */
 function udlSvg(d, selected) {
   const [x1, y1] = toScreen(d.x1, d.y1);
   const [x2, y2] = toScreen(d.x2, d.y2);
   const [sx, sy] = screenDir(d.angle);
-  const lengthM = Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
-  const n = Math.min(41, Math.max(2, Math.round(lengthM / 0.5) + 1));
-  const arrowLen = 36;
+  const w1 = d.w;
+  const w2 = d.w2 ?? d.w;
+  const maxAbs = Math.max(Math.abs(w1), Math.abs(w2));
+  const spanPx = Math.hypot(x2 - x1, y2 - y1);
+  const n = Math.min(41, Math.max(2, Math.round(spanPx / 28) + 1));
+  const maxLen = 40;
 
   const tails = [];
+  const intensities = [];
   let arrows = '';
   for (let i = 0; i < n; i++) {
     const t = i / (n - 1);
+    const w = w1 + (w2 - w1) * t;
     const px = x1 + (x2 - x1) * t;
     const py = y1 + (y2 - y1) * t;
-    const tx = px - sx * arrowLen;
-    const ty = py - sy * arrowLen;
+    const len = maxAbs > 0 ? (maxLen * Math.abs(w)) / maxAbs : 0;
+    const dir = w >= 0 ? 1 : -1;
+    const tx = px - dir * sx * len;
+    const ty = py - dir * sy * len;
     tails.push([tx, ty]);
-    arrows += arrow(tx, ty, px, py, 9, 4);
+    intensities.push(w);
+    if (len >= 10) arrows += arrow(tx, ty, px, py, 9, 4);
   }
-  const first = tails[0];
-  const last = tails[tails.length - 1];
-  const midX = (first[0] + last[0]) / 2;
-  const midY = (first[1] + last[1]) / 2;
 
+  // Label near the larger end, or at the middle of a uniform load.
+  const unit = unitLabel('dist');
+  let text;
+  let at;
+  if (Math.abs(w1 - w2) < 1e-12) {
+    text = `${fD(w1)} ${unit}`;
+    at = Math.floor(n / 2);
+  } else {
+    text = `${fD(w1)} → ${fD(w2)} ${unit}`;
+    at = Math.abs(w1) >= Math.abs(w2) ? 0 : n - 1;
+  }
+  const labelDir = intensities[at] >= 0 ? 1 : -1;
+
+  const envelope = tails.map(([x, y]) => `${r2(x)},${r2(y)}`).join(' ');
+  const hit = `${r2(x1)},${r2(y1)} ${r2(x2)},${r2(y2)} ${[...tails].reverse().map(([x, y]) => `${r2(x)},${r2(y)}`).join(' ')}`;
   const inner =
-    `<polygon class="hit-fill" points="${r2(x1)},${r2(y1)} ${r2(x2)},${r2(y2)} ${r2(last[0])},${r2(last[1])} ${r2(first[0])},${r2(first[1])}"/>` +
-    `<line class="udl-line" x1="${r2(first[0])}" y1="${r2(first[1])}" x2="${r2(last[0])}" y2="${r2(last[1])}"/>` +
+    `<polygon class="hit-fill" points="${hit}"/>` +
+    `<polyline class="udl-line" points="${envelope}"/>` +
     arrows +
-    tailLabel(midX, midY, sx, sy, `${fmt(d.w)} kN/m`);
+    tailLabel(tails[at][0], tails[at][1], labelDir * sx, labelDir * sy, text);
   return group('udl', d.id, selected, inner);
 }
 
@@ -290,7 +506,7 @@ function reactionsSvg(solution) {
     const uy = -fy / mag;
     const x2 = x + ux * len;
     const y2 = y + uy * len;
-    const text = `${name} = ${fmt(mag)} kN`;
+    const text = `${name} = ${fF(mag)} ${unitLabel('force')}`;
     if (truss && Math.abs(ux) < 0.5) {
       // Keep the label clear of the bars: put it on the outer side of the arrow.
       const side = x >= centreX ? 1 : -1;
@@ -313,7 +529,7 @@ function reactionsSvg(solution) {
     if (r.type === 'fixed' && Math.abs(r.m) > 1e-9) {
       s +=
         momentArc(x, y, r.m, 32) +
-        `<text class="label" x="${r2(x + 38)}" y="${r2(y + 34)}">M${r.label} = ${fmt(Math.abs(r.m))} kN·m</text>`;
+        `<text class="label" x="${r2(x + 38)}" y="${r2(y + 34)}">M${r.label} = ${fM(Math.abs(r.m))} ${unitLabel('moment')}</text>`;
     }
   }
   return `${s}</g>`;
@@ -343,7 +559,7 @@ function previewSvg(view) {
     const [hx, hy] = toScreen(hover.x, hover.y);
     s +=
       `<g class="cursor"><line x1="${hx - 10}" y1="${hy}" x2="${hx + 10}" y2="${hy}"/><line x1="${hx}" y1="${hy - 10}" x2="${hx}" y2="${hy + 10}"/></g>` +
-      `<text class="coord" x="${hx + 12}" y="${hy - 10}">${fmt(hover.x, 2)}, ${fmt(hover.y, 2)} m</text>`;
+      `<text class="coord" x="${hx + 12}" y="${hy - 10}">${fmt(toDisplay('length', hover.x), 3)}, ${fmt(toDisplay('length', hover.y), 3)} ${unitLabel('length')}</text>`;
   }
   return s;
 }
@@ -351,7 +567,7 @@ function previewSvg(view) {
 /* ---------- entry point ---------- */
 
 /**
- * @param view { selectedId, pending, hover, tool }
+ * @param view { selectedId, pending, hover, tool, dims }
  */
 export function render(problem, solution, view) {
   const sel = view.selectedId;
@@ -377,6 +593,7 @@ export function render(problem, solution, view) {
 
   return (
     grid() +
+    (view.dims ? dimensionsSvg(problem, solution) : '') +
     problem.distributed.map((d) => udlSvg(d, isSel(d))).join('') +
     memberSvgs.join('') +
     (problem.hinges ?? []).map((h) => hingeSvg(h, isSel(h))).join('') +
@@ -419,6 +636,7 @@ function note(text) {
  */
 export function renderDiagram(problem, solution, internal, kind) {
   const info = DIAGRAM_INFO[kind];
+  const convert = (v) => toDisplay(info.type, v);
   let s =
     grid() +
     `<g class="dim">${problem.members.map((m) => memberSvg(m, false)).join('')}${(problem.hinges ?? [])
@@ -426,7 +644,7 @@ export function renderDiagram(problem, solution, internal, kind) {
       .join('')}${problem.supports
       .map((sp, i) => supportSvg(problem, sp, i, false))
       .join('')}</g>` +
-    `<text class="diagram-title" x="16" y="28">${info.title} (${info.unit})</text>` +
+    `<text class="diagram-title" x="16" y="28">${info.title} (${unitLabel(info.type)})</text>` +
     `<text class="diagram-sub" x="16" y="48">${info.note}</text>`;
 
   if (internal.status !== 'ok') return s + note(internal.message);
@@ -446,7 +664,7 @@ export function renderDiagram(problem, solution, internal, kind) {
       s += `<line class="fm fm-${state}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${r2(width)}"/>`;
 
       // Label on the bar itself (with a halo) so neighbouring labels cannot collide.
-      const text = state === 'zero' ? '0' : `${v > 0 ? '+' : ''}${fmt(v)}`;
+      const text = state === 'zero' ? '0' : sgn(fmt(convert(v)), v);
       s += `<text class="label fm-label" x="${r2((x1 + x2) / 2)}" y="${r2((y1 + y2) / 2 + 4)}" text-anchor="middle">${text}</text>`;
     }
     return `${s}</g>${jointsSvg(solution)}`;
@@ -462,8 +680,8 @@ export function renderDiagram(problem, solution, internal, kind) {
     const sn = [m.n[0], -m.n[1]]; // member normal on screen
 
     const pts = m.stations.map((p) => {
-      const bx = ax + st[0] * p.s * SCALE;
-      const by = ay + st[1] * p.s * SCALE;
+      const bx = ax + st[0] * p.s * camera.scale;
+      const by = ay + st[1] * p.s * camera.scale;
       const off = side * p[kind] * k;
       return { bx, by, ox: bx + sn[0] * off, oy: by + sn[1] * off, v: p[kind], edge: p.edge };
     });
@@ -491,7 +709,7 @@ export function renderDiagram(problem, solution, internal, kind) {
     const candidates = m.constant ? new Set([pts[Math.floor(pts.length / 2)]]) : new Set([...pts.filter((p) => p.edge), hi, lo]);
     for (const p of candidates) {
       if (Math.abs(p.v) < maxAbs * 1e-6) continue;
-      const text = `${p.v > 0 ? '+' : ''}${fmt(p.v)}`;
+      const text = sgn(fmt(convert(p.v)), p.v);
       const key = `${Math.round(p.ox / 24)},${Math.round(p.oy / 24)},${text}`;
       if (seenLabels.has(key)) continue;
       seenLabels.add(key);

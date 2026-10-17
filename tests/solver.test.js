@@ -20,6 +20,7 @@ const value = (solution, label) => {
 
 const pinRoller = (length, extra = {}) =>
   normalizeProblem({
+    members: [{ x1: 0, y1: 0, x2: length, y2: 0 }],
     supports: [
       { type: 'pin', x: 0, y: 0 },
       { type: 'roller', x: length, y: 0, angle: 90 },
@@ -60,6 +61,7 @@ test('applied couple is balanced by a pair of vertical reactions', () => {
 test('cantilever with uniformly distributed load', () => {
   const s = solve(
     normalizeProblem({
+      members: [{ x1: 0, y1: 0, x2: 4, y2: 0 }],
       supports: [{ type: 'fixed', x: 0, y: 0 }],
       distributed: [{ x1: 0, y1: 0, x2: 4, y2: 0, w: 5, angle: 270 }],
     })
@@ -74,6 +76,7 @@ test('roller on an incline reacts along its own normal', () => {
   // Roller whose normal points at 135 degrees, load 10 kN down at the pin point.
   const s = solve(
     normalizeProblem({
+      members: [{ x1: 0, y1: 0, x2: 4, y2: 0 }],
       supports: [
         { type: 'pin', x: 0, y: 0 },
         { type: 'roller', x: 4, y: 0, angle: 135 },
@@ -94,6 +97,10 @@ test('every solved problem sums to zero force and zero moment', () => {
         { x: 1.5, y: 0, magnitude: 7, angle: 250 },
         { x: 5, y: 2, magnitude: 3, angle: 10 },
       ],
+      members: [
+        { x1: 0, y1: 0, x2: 7, y2: 0 },
+        { x1: 5, y1: 0, x2: 5, y2: 2 },
+      ],
       moments: [{ x: 3, y: 0, value: -8 }],
       distributed: [{ x1: 2, y1: 0, x2: 6, y2: 0, w: 2.5, angle: 270 }],
     })
@@ -108,13 +115,77 @@ test('every solved problem sums to zero force and zero moment', () => {
 /* ---------- problem classification ---------- */
 
 test('no supports is incomplete', () => {
-  const s = solve(normalizeProblem({ forces: [{ x: 0, y: 0, magnitude: 5, angle: 270 }] }));
+  const s = solve(
+    normalizeProblem({
+      members: [{ x1: 0, y1: 0, x2: 4, y2: 0 }],
+      forces: [{ x: 0, y: 0, magnitude: 5, angle: 270 }],
+    })
+  );
   assert.equal(s.status, 'incomplete');
+});
+
+test('frame modeling errors reject disconnected members and unattached items', () => {
+  const connected = {
+    members: [{ x1: 0, y1: 0, x2: 4, y2: 0 }],
+    supports: [
+      { type: 'pin', x: 0, y: 0 },
+      { type: 'roller', x: 4, y: 0 },
+    ],
+  };
+
+  const detachedMembers = solve(
+    normalizeProblem({
+      ...connected,
+      members: [...connected.members, { x1: 8, y1: 0, x2: 10, y2: 0 }],
+    })
+  );
+  assert.equal(detachedMembers.status, 'invalid');
+  assert.match(detachedMembers.message, /Members are not connected/);
+
+  const zeroLengthMember = solve(
+    normalizeProblem({
+      ...connected,
+      members: [{ x1: 0, y1: 0, x2: 0, y2: 0 }],
+    })
+  );
+  assert.equal(zeroLengthMember.status, 'invalid');
+  assert.match(zeroLengthMember.message, /zero length/);
+
+  const detachedForce = solve(
+    normalizeProblem({ ...connected, forces: [{ x: 6, y: 0, magnitude: 5 }] })
+  );
+  assert.equal(detachedForce.status, 'invalid');
+  assert.match(detachedForce.message, /point force .* not on a member/);
+
+  const detachedSupport = solve(
+    normalizeProblem({
+      ...connected,
+      supports: [connected.supports[0], { type: 'roller', x: 6, y: 0 }],
+    })
+  );
+  assert.equal(detachedSupport.status, 'invalid');
+  assert.match(detachedSupport.message, /support .* not on a member/);
+
+  const detachedMoment = solve(
+    normalizeProblem({ ...connected, moments: [{ x: 6, y: 0, value: 5 }] })
+  );
+  assert.equal(detachedMoment.status, 'invalid');
+  assert.match(detachedMoment.message, /applied moment .* not on a member/);
+
+  const detachedDistributed = solve(
+    normalizeProblem({
+      ...connected,
+      distributed: [{ x1: 6, y1: 0, x2: 8, y2: 0, w: 2 }],
+    })
+  );
+  assert.equal(detachedDistributed.status, 'invalid');
+  assert.match(detachedDistributed.message, /distributed load is not on a member/);
 });
 
 test('four or more unknowns is statically indeterminate', () => {
   const s = solve(
     normalizeProblem({
+      members: [{ x1: 0, y1: 0, x2: 6, y2: 0 }],
       supports: [
         { type: 'pin', x: 0, y: 0 },
         { type: 'pin', x: 6, y: 0 },
@@ -128,6 +199,7 @@ test('four or more unknowns is statically indeterminate', () => {
 test('a roller with horizontal reaction cannot carry a vertical load', () => {
   const s = solve(
     normalizeProblem({
+      members: [{ x1: 0, y1: 0, x2: 4, y2: 0 }],
       supports: [
         { type: 'pin', x: 0, y: 0 },
         { type: 'roller', x: 4, y: 0, angle: 0 },
@@ -141,6 +213,7 @@ test('a roller with horizontal reaction cannot carry a vertical load', () => {
 test('parallel vertical reactions with a horizontal load are unstable', () => {
   const s = solve(
     normalizeProblem({
+      members: [{ x1: 0, y1: 0, x2: 4, y2: 0 }],
       supports: [
         { type: 'roller', x: 0, y: 0, angle: 90 },
         { type: 'roller', x: 4, y: 0, angle: 90 },
@@ -154,6 +227,7 @@ test('parallel vertical reactions with a horizontal load are unstable', () => {
 test('partial restraint solves but carries a warning', () => {
   const s = solve(
     normalizeProblem({
+      members: [{ x1: 0, y1: 0, x2: 4, y2: 0 }],
       supports: [{ type: 'roller', x: 0, y: 0, angle: 90 }],
       forces: [{ x: 0, y: 0, magnitude: 10, angle: 270 }],
     })

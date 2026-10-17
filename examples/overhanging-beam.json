@@ -5,6 +5,6 @@
     { "id": "s1", "type": "pin", "x": 0, "y": 0 },
     { "id": "s2", "type": "roller", "x": 6, "y": 0, "angle": 90 }
   ],
-  "forces": [{ "id": "f1", "x": 8, "y": 0, "magnitude": 6, "angle": 270 }],
+  "forces": [{ "id": "f1", "x": 8, "y": 0, "magnitude": 6, "angle": -90 }],
   "moments": [{ "id": "c1", "x": 3, "y": 0, "value": 20 }]
 }

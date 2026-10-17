@@ -1,8 +1,6 @@
 # Free body diagram solver
 
-Draw a beam, frame or truss, add supports and loads, and get the reactions, internal forces and bar forces for statically determinate problems. Everything runs in the browser. There is no server and no build step.
-
-**Live web version:** *[FBD-Solver](https://andisaifulkohir.github.io/FBD-Solver/)*
+Draw a beam, frame or truss, add supports and loads, and get the reactions, internal forces and bar forces. Everything runs in the browser. There is no server and no build step.
 
 Two modes, chosen with the **Frame** / **Truss** buttons:
 
@@ -31,31 +29,66 @@ npx serve .
 
 Then open the address it prints.
 
+To publish it, push to GitHub and turn on **Settings → Pages → Deploy from a branch → `main` / root**. The repo is the site.
+
+The Quick access menu is shared with the portfolio homepage and loads from
+`https://andisaifulkohir.github.io/assets/`. It therefore requires an internet
+connection; update `assets/quick-access.html` in the homepage project to change
+the menu for all three pages.
+
 ## Using it
 
-| Tool                 | Key               | What it does                                                            |
-| -------------------- | ----------------- | ----------------------------------------------------------------------- |
-| Select               | `V`             | Click to edit, drag to move, drag the white handles to move an endpoint |
-| Member / Bar         | `M`             | Click joints in turn to draw a frame or truss. `Esc` finishes         |
-| Hinge                | `H`             | Click a point on a member to insert an internal pin (frame mode)        |
-| Pin / Roller / Fixed | `P` `R` `F` | Click to place a support. Fixed is frame mode only                      |
-| Force                | `L`             | Click where a point load acts                                           |
-| Moment               | `C`             | Click where a couple acts (frame mode)                                  |
-| Distributed          | `D`             | Click the start and end of a uniform load (frame mode)                  |
+| Tool | Key | What it does |
+| --- | --- | --- |
+| Select | `V` | Click to edit, drag to move, drag the white handles to move an endpoint |
+| Member / Bar | `M` | Click joints in turn to draw a frame or truss. `Esc` finishes |
+| Hinge | `H` | Click a point on a member to insert an internal pin (frame mode) |
+| Pin / Roller / Fixed | `P` `R` `F` | Click to place a support. Fixed is frame mode only |
+| Force | `L` | Click where a point load acts |
+| Moment | `C` | Click where a couple acts (frame mode) |
+| Distributed | `D` | Click the start and end of a distributed load, uniform or sloped (frame mode) |
 
 The four buttons above the drawing switch between the free body diagram and the **N**, **V** and **M** diagrams (keys `1` to `4`). The diagrams are read-only. Picking a tool takes you back to editing.
 
-`Delete` removes the selected item, `Ctrl/Cmd+Z` undoes, and right-click cancels the current tool. Points snap to a 0.5 m grid. Type exact values in the **Selected item** panel. The solution updates as you drag.
+`Delete` removes the selected item, `Ctrl/Cmd+Z` undoes, and right-click cancels the current tool. Type exact values in the **Selected item** panel. The solution updates as you drag.
+
+### Zoom, pan and the default view
+
+- The drawing opens **centred and fitted** to the canvas. Loading an example or importing a file centres it again, and **Fit** (key `0`) does it on demand.
+- **Zoom** with the mouse wheel (the point under the cursor stays put), the **+** and **−** buttons, or the `+` and `-` keys.
+- **Pan** by dragging empty space (with the Select tool), or with the middle mouse button in any tool.
+- The grid and the snap step follow the zoom. Grid lines are at least 40 px apart and sit on round numbers of the current unit (1, 2, 5, 10...). The snap step is a round fraction of that, and the current grid and snap are shown under the drawing.
+- Symbols, arrows and labels keep their pixel size at any zoom.
+
+### Automatic dimensions
+
+Press **Dims** to show or hide dimension lines on the drawing (they are not drawn on the N, V and M diagrams). Every position you have defined, meaning member ends, supports, point loads, moments, hinges and the start and end of distributed loads, contributes a position. The chains run between the distinct positions:
+
+- A row of distances **below** the drawing, plus an overall length when there are three or more positions.
+- A column of vertical distances beside it. It goes on the side with fewer horizontal arrows, so it stays clear of loads and reactions.
+- Segments too short to read at the current zoom keep their tick marks but lose the label. Zoom in to see them.
+
+### Units
+
+Pick the length unit (m, cm, mm, ft, in) and the force unit (kN, N, kip, lbf) next to **Undo**. Moments and distributed loads follow (for example N·mm and N/mm, or kip·ft and kip/ft). Everything shown or typed is in the chosen units: the drawing, the panels, the equations, the dimensions and the grid.
+
+Stored values are **always metres and kilonewtons**. The unit choice only changes how they are shown and typed, so switching units never changes a result, and files stay valid. Loading an example keeps the units you are using.
+
+### Distributed loads that vary
+
+A distributed load has a **start intensity** and an **end intensity**. Equal values give a uniform load, 0 at one end gives a triangle, and two different values give a trapezoid. The arrows show the shape. If the intensity changes sign along the span, the arrows flip direction. **Make uniform** sets the end equal to the start.
+
+The solver splits a linearly varying load into a uniform part and a triangular part, which gives the exact force and moment even when the net force is zero. For a triangular load the shear and moment diagrams place the moment peak exactly where the shear crosses zero.
 
 ## Conventions
 
-- Units are kN, m and degrees.
+- Stored units are kN, m and degrees. The display units can be changed (see Units).
 - `+x` is right and `+y` is up.
 - Angles are measured counterclockwise from `+x`, so 270° points down.
 - Moments are positive counterclockwise.
 - A **pin** has two unknowns (`Ax`, `Ay`). A **roller** has one, along its direction (default 90°, up). A **fixed** support has three (`Ax`, `Ay`, `MA`).
-- A distributed load is replaced by one resultant (intensity × length) at its midpoint.
-- Members are for drawing. For a single rigid body, equilibrium depends on where loads and supports are, not on the geometry between them.
+- A distributed load is replaced by its resultant: intensity × length at the midpoint for a uniform load, and the centroid of the trapezoid when it varies. Intensity is per unit length of the loaded span, measured from its start to its end.
+- Frame members must form one connected structure. Every support, point force and applied moment must sit on a member or joint; distributed loads must follow members. In truss mode, bars must form one connected structure and supports and forces must sit at joints. Invalid or disconnected models are rejected instead of being solved as if they were connected.
 
 ## Hinges and portal frames
 
@@ -100,27 +133,28 @@ Requirements for the diagrams:
 
 ## What the solver reports
 
-| Status        | Meaning                                                                                 |
-| ------------- | --------------------------------------------------------------------------------------- |
-| Solved        | Unique reactions found. A warning appears if the supports restrain fewer than 3 motions |
-| Unstable      | The supports cannot balance the loads, or the reactions are not independent             |
-| Indeterminate | More than 3 unknown reactions, so equilibrium alone is not enough                       |
-| Incomplete    | No supports yet                                                                         |
+| Status | Meaning |
+| --- | --- |
+| Solved | Unique reactions found. A warning appears if the supports restrain fewer than 3 motions |
+| Unstable | The supports cannot balance the loads, or the reactions are not independent |
+| Indeterminate | More than 3 unknown reactions, so equilibrium alone is not enough |
+| Incomplete | No supports yet |
 
 ## Problem files
 
-Problems are plain JSON. `mode` is `"frame"` (the default) or `"truss"`. Use **Export** and **Import** in the app, or see [`examples/`](examples/).
+Problems are plain JSON. `mode` is `"frame"` (the default) or `"truss"`. A distributed load has `w` at its start and `w2` at its end (`w2` defaults to `w`). `units` only controls the display: all stored numbers are metres, kilonewtons and degrees. Use **Export** and **Import** in the app, or see [`examples/`](examples/).
 
 ```json
 {
   "name": "Simply supported beam",
   "mode": "frame",
+  "units": { "length": "m", "force": "kN" },
   "members":     [{ "x1": 0, "y1": 0, "x2": 6, "y2": 0 }],
   "supports":    [{ "type": "pin", "x": 0, "y": 0 },
                   { "type": "roller", "x": 6, "y": 0, "angle": 90 }],
   "forces":      [{ "x": 2, "y": 0, "magnitude": 12, "angle": 270 }],
   "moments":     [{ "x": 3, "y": 0, "value": 20 }],
-  "distributed": [{ "x1": 0, "y1": 0, "x2": 4, "y2": 0, "w": 5, "angle": 270 }],
+  "distributed": [{ "x1": 0, "y1": 0, "x2": 4, "y2": 0, "w": 2, "w2": 6, "angle": 270 }],
   "hinges":      [{ "x": 3, "y": 0 }]
 }
 ```
@@ -136,12 +170,14 @@ js/truss.js         method of joints for trusses (pure)
 js/analysis.js      picks the frame or truss solver by mode
 js/mathutil.js      shared helpers and the linear-equation solver
 js/internal.js      N, V, M along members by the method of sections (pure)
+js/units.js         display units and conversions (pure)
+js/dimensions.js    positions for the automatic dimensions, and the drawing bounds (pure)
 js/model.js         problem data model and validation
 js/format.js        display rounding and equation text
-js/draw.js          SVG rendering
+js/draw.js          SVG rendering, camera (zoom, pan, fit) and dimensions
 js/app.js           tools, pointer handling, panels
 examples/           solved sample problems
-tests/              solver, hinge, truss and internal force tests against hand calculations
+tests/              solver, hinge, truss, load, unit, dimension, view and internal force tests
 ```
 
 `solver.js` never touches the DOM, so it is easy to test and reuse. Rounding is only done when displaying, never inside the solver.
@@ -152,7 +188,7 @@ tests/              solver, hinge, truss and internal force tests against hand c
 npm test
 ```
 
-Uses Node's built-in test runner (Node 18 or later). No dependencies to install. The tests check textbook problems against hand calculations (including V = wL/2 and M = wL²/8 for a uniformly loaded beam, and the cantilever wall moment), confirm the equilibrium check balances, and cover the unstable, indeterminate and diagram-unavailable cases.
+Uses Node's built-in test runner (Node 18 or later). No dependencies to install. The tests check textbook problems against hand calculations (including V = wL/2 and M = wL²/8 for a uniformly loaded beam, and the cantilever wall moment), confirm the equilibrium check balances, and cover the unstable, indeterminate and diagram-unavailable cases. The view tests check that fitting centres the drawing, that zooming keeps the point under the cursor fixed, that grid lines stay at least 40 px apart at every zoom, and that dimension labels follow the chosen unit.
 
 ## Roadmap
 
@@ -162,10 +198,6 @@ Uses Node's built-in test runner (Node 18 or later). No dependencies to install.
 - Internal forces for frames with closed loops
 - Deflected shape
 - 3D statics
-
-## Acknowledgment
-
-This project was built with the help of Claude and GitHub Copilot in VS Code.
 
 ## License
 

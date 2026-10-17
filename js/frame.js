@@ -20,7 +20,11 @@ const LOOP = 'A hinge inside a closed loop is not supported yet.';
  * { nodes, segments, adj, nodeIndex, locate, branches }.
  */
 export function buildFrame(problem) {
-  const raw = problem.members.filter((m) => Math.hypot(m.x2 - m.x1, m.y2 - m.y1) > TOL);
+  if (problem.members.length === 0) return { error: 'Draw at least one member before solving.' };
+  if (problem.members.some((m) => Math.hypot(m.x2 - m.x1, m.y2 - m.y1) <= TOL)) {
+    return { error: 'A member has zero length. Move its endpoints apart or delete it.' };
+  }
+  const raw = problem.members;
 
   const nodes = [];
   const nodeIndex = (x, y) => nodes.findIndex((p) => Math.hypot(p.x - x, p.y - y) < TOL);
@@ -98,11 +102,33 @@ export function buildFrame(problem) {
     adj[sg.b].push({ segment: k, other: sg.a });
   });
 
+  const visited = new Set();
+  let components = 0;
+  for (let start = 0; start < adj.length; start++) {
+    if (adj[start].length === 0 || visited.has(start)) continue;
+    components++;
+    const stack = [start];
+    visited.add(start);
+    while (stack.length) {
+      const u = stack.pop();
+      for (const edge of adj[u]) {
+        if (visited.has(edge.other)) continue;
+        visited.add(edge.other);
+        stack.push(edge.other);
+      }
+    }
+  }
+  if (components > 1) {
+    return { error: 'Members are not connected. Join them at a common joint or intersection.' };
+  }
+
   // Distributed loads become portions on whichever segments they lie along.
   for (const d of problem.distributed) {
     const len = Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
-    if (len < TOL) continue;
+    if (len < TOL) return { error: 'A distributed load has zero length. Move its endpoints apart or delete it.' };
     const [dx, dy] = directionOf(d.angle);
+    const w1 = d.w;
+    const w2 = d.w2 ?? d.w;
     let covered = 0;
     for (const sg of segments) {
       const p1 = along(sg, d.x1, d.y1);
@@ -111,7 +137,9 @@ export function buildFrame(problem) {
       const lo = Math.max(Math.min(p1.s, p2.s), 0);
       const hi = Math.min(Math.max(p1.s, p2.s), sg.length);
       if (hi - lo > TOL) {
-        sg.udls.push({ lo, hi, wx: d.w * dx, wy: d.w * dy });
+        // Intensity varies linearly from w1 at the load's start to w2 at its end.
+        const at = (s) => w1 + ((w2 - w1) * (s - p1.s)) / (p2.s - p1.s);
+        sg.udls.push({ lo, hi, wa: at(lo), wb: at(hi), dx, dy });
         covered += hi - lo;
       }
     }
@@ -128,6 +156,21 @@ export function buildFrame(problem) {
     }
     return null;
   };
+
+  for (const [items, pointName] of [
+    [problem.supports, 'support'],
+    [problem.forces, 'point force'],
+    [problem.moments, 'applied moment'],
+  ]) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!locate(item.x, item.y)) {
+        return {
+          error: `The ${pointName} ${i + 1} is not on a member. Place it on a member or joint.`,
+        };
+      }
+    }
+  }
 
   /**
    * The separate parts of the frame that meet at joint `hn` (one per member end there).

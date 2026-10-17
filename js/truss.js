@@ -21,7 +21,7 @@ const tidy = (v) => (Math.abs(v) < EPS ? 0 : v);
 export function solveTruss(problem) {
   const base = {
     mode: 'truss',
-    loads: { forces: [], moments: [] },
+    loads: { forces: [], moments: [], distributed: [] },
     unknowns: [],
     reactions: [],
     joints: [],
@@ -59,9 +59,40 @@ export function solveTruss(problem) {
       message: `A truss uses bars, pin and roller supports, and forces at joints. Remove ${unsupported.join(', ')}, or switch to Frame.`,
     };
   }
-  if (bars.length === 0) {
+  if (problem.members.length === 0) {
     return { ...withJoints, status: 'incomplete', message: 'Draw bars to build a truss.' };
   }
+  if (bars.length !== problem.members.length) {
+    return {
+      ...withJoints,
+      status: 'invalid',
+      message: 'A bar has zero length. Move its endpoints apart or delete it.',
+    };
+  }
+
+  const adjacency = joints.map(() => []);
+  for (const bar of barEnds) {
+    adjacency[bar.a].push(bar.b);
+    adjacency[bar.b].push(bar.a);
+  }
+  const visited = new Set([barEnds[0].a]);
+  const stack = [barEnds[0].a];
+  while (stack.length) {
+    const joint = stack.pop();
+    for (const next of adjacency[joint]) {
+      if (visited.has(next)) continue;
+      visited.add(next);
+      stack.push(next);
+    }
+  }
+  if (visited.size !== joints.length) {
+    return {
+      ...withJoints,
+      status: 'invalid',
+      message: 'Truss members are not connected. Join every bar at a shared joint.',
+    };
+  }
+
   if (problem.supports.length === 0) {
     return { ...withJoints, status: 'incomplete', message: 'Add supports to hold the truss in place.' };
   }
@@ -139,7 +170,7 @@ export function solveTruss(problem) {
   const tol = EPS * scale;
   const { pivots, rank } = rref(A, n, tol);
   const degrees = { bars: m, reactions: r, joints: nJoints, unknowns: n, equations: 2 * nJoints };
-  const common = { ...withJoints, loads: { forces: loads, moments: [] }, degrees };
+  const common = { ...withJoints, loads: { forces: loads, moments: [], distributed: [] }, degrees };
 
   if (A.slice(rank).some((row) => Math.abs(row[n]) > tol)) {
     return {

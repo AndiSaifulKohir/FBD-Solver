@@ -156,6 +156,24 @@ test('no bars or no supports is incomplete', () => {
   assert.equal(truss({ members: square }).status, 'incomplete');
 });
 
+test('a truss with disconnected bars is invalid', () => {
+  const s = truss({
+    members: [...square, { x1: 8, y1: 0, x2: 10, y2: 0 }],
+    supports: squareSupports,
+  });
+  assert.equal(s.status, 'invalid');
+  assert.match(s.message, /Truss members are not connected/);
+});
+
+test('a zero-length truss bar is invalid', () => {
+  const s = truss({
+    members: [{ x1: 0, y1: 0, x2: 0, y2: 0 }],
+    supports: [{ type: 'pin', x: 0, y: 0 }],
+  });
+  assert.equal(s.status, 'invalid');
+  assert.match(s.message, /zero length/);
+});
+
 test('analyze picks the solver from the mode', async () => {
   const t = analyze(await example('truss-triangle.json'));
   assert.equal(t.mode, 'truss');

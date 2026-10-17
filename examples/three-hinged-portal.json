@@ -11,6 +11,6 @@
     { "id": "s2", "type": "pin", "x": 6, "y": 0 }
   ],
   "forces": [{ "id": "f1", "x": 0, "y": 4, "magnitude": 8, "angle": 0 }],
-  "distributed": [{ "id": "w1", "x1": 0, "y1": 4, "x2": 6, "y2": 4, "w": 3, "angle": 270 }],
+  "distributed": [{ "id": "w1", "x1": 0, "y1": 4, "x2": 6, "y2": 4, "w": 3, "angle": -90 }],
   "hinges": [{ "id": "h1", "x": 3, "y": 4 }]
 }

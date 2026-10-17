@@ -134,7 +134,7 @@ test('hinge problems are reported clearly', async () => {
   const off = structuredClone(p);
   off.hinges = [{ id: 'h', x: 3, y: 1 }];
   const a = solve(off);
-  assert.equal(a.status, 'incomplete');
+  assert.equal(a.status, 'invalid');
   assert.match(a.message, /hinge is not on a member/);
 
   const couple = structuredClone(p);
@@ -163,7 +163,7 @@ test('a hinge in a closed loop is reported', () => {
     hinges: [{ x: 2, y: 4 }],
   });
   const s = solve(p);
-  assert.equal(s.status, 'incomplete');
+  assert.equal(s.status, 'invalid');
   assert.match(s.message, /closed loop/);
 });
 

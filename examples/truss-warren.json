@@ -23,7 +23,7 @@
     { "id": "s2", "type": "roller", "x": 8, "y": 0, "angle": 90 }
   ],
   "forces": [
-    { "id": "f1", "x": 3, "y": 2, "magnitude": 10, "angle": 270 },
-    { "id": "f2", "x": 5, "y": 2, "magnitude": 10, "angle": 270 }
+    { "id": "f1", "x": 3, "y": 2, "magnitude": 10, "angle": -90 },
+    { "id": "f2", "x": 5, "y": 2, "magnitude": 10, "angle": -90 }
   ]
 }

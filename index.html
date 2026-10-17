@@ -5,11 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Free body diagram solver</title>
   <meta name="description" content="Draw a rigid body, add supports and loads, and solve the equilibrium equations in your browser.">
+  <script>
+    const savedTheme = localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.setAttribute(
+      "data-theme",
+      savedTheme === "dark" || (!savedTheme && prefersDark) ? "dark" : "light"
+    );
+  </script>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div class="app">
     <header class="top">
+      <div class="header-top">
+        <a class="logo" href="https://andisaifulkohir.github.io/" aria-label="andisaifulkohir home">andisaifulkohir<span>.</span></a>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false">
+          <span id="theme-icon" aria-hidden="true">☾</span>
+        </button>
+      </div>
       <div>
         <h1>Free body diagram solver</h1>
         <p class="sub">Beams, frames and trusses: draw, load, and read off reactions, internal forces and bar forces.</p>
@@ -21,6 +35,8 @@
           <option value="simply-supported-beam.json">Simply supported beam</option>
           <option value="overhanging-beam.json">Beam with an applied moment</option>
           <option value="beam-udl.json">Beam with distributed load</option>
+          <option value="beam-triangular.json">Beam with triangular load</option>
+          <option value="beam-trapezoid.json">Beam with trapezoidal load</option>
           <option value="three-hinged-portal.json">Three-hinged portal</option>
           <option value="truss-triangle.json">Truss: triangle</option>
           <option value="truss-warren.json">Truss: Warren</option>
@@ -28,6 +44,23 @@
           <option value="inclined-load.json">Inclined load on a beam</option>
           <option value="portal-frame.json">Portal frame</option>
         </select>
+        <span class="units" role="group" aria-label="Units">
+          <label for="unit-length">Units</label>
+          <select id="unit-length" class="btn" title="Length unit">
+            <option value="m">m</option>
+            <option value="cm">cm</option>
+            <option value="mm">mm</option>
+            <option value="ft">ft</option>
+            <option value="in">in</option>
+          </select>
+          <label class="visually-hidden" for="unit-force">Force unit</label>
+          <select id="unit-force" class="btn" title="Force unit">
+            <option value="kN">kN</option>
+            <option value="N">N</option>
+            <option value="kip">kip</option>
+            <option value="lbf">lbf</option>
+          </select>
+        </span>
         <button class="btn" type="button" id="undo" disabled>Undo</button>
         <button class="btn" type="button" id="import">Import</button>
         <button class="btn" type="button" id="export">Export</button>
@@ -69,11 +102,18 @@
       </div>
 
       <div class="stage">
+        <div class="zoombar" role="group" aria-label="View controls">
+          <button class="zbtn" type="button" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button>
+          <button class="zbtn" type="button" id="zoom-out" title="Zoom out (−)" aria-label="Zoom out">−</button>
+          <button class="zbtn wide" type="button" id="zoom-fit" title="Centre and fit the drawing (0)">Fit</button>
+          <button class="zbtn wide" type="button" id="toggle-dims" aria-pressed="true" title="Show automatic dimensions">Dims</button>
+        </div>
         <svg id="canvas" class="tool-select" viewBox="0 0 1000 620" role="img" aria-label="Free body diagram drawing area"></svg>
       </div>
 
       <div class="hintbar">
         <span id="hint"></span>
+        <span id="gridinfo" class="gridinfo"></span>
         <span id="notice" role="status"></span>
       </div>
     </main>
@@ -91,6 +131,7 @@
   </div>
 
   <noscript>This tool needs JavaScript to draw and solve problems.</noscript>
+  <script src="https://andisaifulkohir.github.io/assets/js/quick-access.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
