@@ -1,6 +1,9 @@
 # Free body diagram solver
 
-Draw a beam, frame or truss, add supports and loads, and get the reactions, internal forces and bar forces. Everything runs in the browser. There is no server and no build step.
+Draw a beam, frame or truss, add supports and loads, and get the reactions, internal forces and bar forces for statically determinate problems. Everything runs in the browser. There is no server and no build step.
+Still in development, expect bugs and breaking changes. Found an issue? Please let me know.
+
+**Live web version:** *[FBD-Solver](https://andisaifulkohir.github.io/FBD-Solver/)*
 
 Two modes, chosen with the **Frame** / **Truss** buttons:
 
@@ -38,15 +41,15 @@ the menu for all three pages.
 
 ## Using it
 
-| Tool | Key | What it does |
-| --- | --- | --- |
-| Select | `V` | Click to edit, drag to move, drag the white handles to move an endpoint |
-| Member / Bar | `M` | Click joints in turn to draw a frame or truss. `Esc` finishes |
-| Hinge | `H` | Click a point on a member to insert an internal pin (frame mode) |
-| Pin / Roller / Fixed | `P` `R` `F` | Click to place a support. Fixed is frame mode only |
-| Force | `L` | Click where a point load acts |
-| Moment | `C` | Click where a couple acts (frame mode) |
-| Distributed | `D` | Click the start and end of a distributed load, uniform or sloped (frame mode) |
+| Tool                 | Key               | What it does                                                                  |
+| -------------------- | ----------------- | ----------------------------------------------------------------------------- |
+| Select               | `V`             | Click to edit, drag to move, drag the white handles to move an endpoint       |
+| Member / Bar         | `M`             | Click joints in turn to draw a frame or truss. `Esc` finishes               |
+| Hinge                | `H`             | Click a point on a member to insert an internal pin (frame mode)              |
+| Pin / Roller / Fixed | `P` `R` `F` | Click to place a support. Fixed is frame mode only                            |
+| Force                | `L`             | Click where a point load acts                                                 |
+| Moment               | `C`             | Click where a couple acts (frame mode)                                        |
+| Distributed          | `D`             | Click the start and end of a distributed load, uniform or sloped (frame mode) |
 
 The four buttons above the drawing switch between the free body diagram and the **N**, **V** and **M** diagrams (keys `1` to `4`). The diagrams are read-only. Picking a tool takes you back to editing.
 
@@ -133,12 +136,12 @@ Requirements for the diagrams:
 
 ## What the solver reports
 
-| Status | Meaning |
-| --- | --- |
-| Solved | Unique reactions found. A warning appears if the supports restrain fewer than 3 motions |
-| Unstable | The supports cannot balance the loads, or the reactions are not independent |
-| Indeterminate | More than 3 unknown reactions, so equilibrium alone is not enough |
-| Incomplete | No supports yet |
+| Status        | Meaning                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------- |
+| Solved        | Unique reactions found. A warning appears if the supports restrain fewer than 3 motions |
+| Unstable      | The supports cannot balance the loads, or the reactions are not independent             |
+| Indeterminate | More than 3 unknown reactions, so equilibrium alone is not enough                       |
+| Incomplete    | No supports yet                                                                         |
 
 ## Problem files
 
@@ -198,6 +201,10 @@ Uses Node's built-in test runner (Node 18 or later). No dependencies to install.
 - Internal forces for frames with closed loops
 - Deflected shape
 - 3D statics
+
+## Acknowledgment
+
+This project was built with the help of Claude and GitHub Copilot in VS Code.
 
 ## License
 
