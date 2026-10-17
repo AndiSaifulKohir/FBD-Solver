@@ -1,6 +1,7 @@
 # Free body diagram solver
 
 Draw a beam, frame or truss, add supports and loads, and get the reactions, internal forces and bar forces for statically determinate problems. Everything runs in the browser. There is no server and no build step.
+Still in development, expect bugs and breaking changes. Found an issue? Please let me know.
 
 **Live web version:** *[FBD-Solver](https://andisaifulkohir.github.io/FBD-Solver/)*
 
