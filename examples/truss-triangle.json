@@ -1,0 +1,14 @@
+{
+  "name": "Triangular truss",
+  "mode": "truss",
+  "members": [
+    { "id": "b1", "x1": 0, "y1": 0, "x2": 4, "y2": 0 },
+    { "id": "b2", "x1": 0, "y1": 0, "x2": 2, "y2": 3 },
+    { "id": "b3", "x1": 4, "y1": 0, "x2": 2, "y2": 3 }
+  ],
+  "supports": [
+    { "id": "s1", "type": "pin", "x": 0, "y": 0 },
+    { "id": "s2", "type": "roller", "x": 4, "y": 0, "angle": 90 }
+  ],
+  "forces": [{ "id": "f1", "x": 2, "y": 3, "magnitude": 12, "angle": 270 }]
+}

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Free body diagram solver</title>
+  <meta name="description" content="Draw a rigid body, add supports and loads, and solve the equilibrium equations in your browser.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div>
+        <h1>Free body diagram solver</h1>
+        <p class="sub">Beams, frames and trusses: draw, load, and read off reactions, internal forces and bar forces.</p>
+      </div>
+      <div class="actions">
+        <label class="visually-hidden" for="examples">Load an example</label>
+        <select id="examples" class="btn">
+          <option value="">Load an example…</option>
+          <option value="simply-supported-beam.json">Simply supported beam</option>
+          <option value="overhanging-beam.json">Beam with an applied moment</option>
+          <option value="beam-udl.json">Beam with distributed load</option>
+          <option value="three-hinged-portal.json">Three-hinged portal</option>
+          <option value="truss-triangle.json">Truss: triangle</option>
+          <option value="truss-warren.json">Truss: Warren</option>
+          <option value="cantilever-udl.json">Cantilever with distributed load</option>
+          <option value="inclined-load.json">Inclined load on a beam</option>
+          <option value="portal-frame.json">Portal frame</option>
+        </select>
+        <button class="btn" type="button" id="undo" disabled>Undo</button>
+        <button class="btn" type="button" id="import">Import</button>
+        <button class="btn" type="button" id="export">Export</button>
+        <button class="btn" type="button" id="clear">Clear</button>
+        <input type="file" id="file" accept=".json,application/json" hidden>
+      </div>
+    </header>
+
+    <main>
+      <div class="toolbar" role="toolbar" aria-label="Drawing tools">
+        <div class="group" role="group" aria-label="Analysis type">
+          <button class="tool" type="button" data-set-mode="frame" aria-pressed="true" title="Beams and frames: rigid joints, optional hinges">Frame</button>
+          <button class="tool" type="button" data-set-mode="truss" aria-pressed="false" title="Pin-jointed bars, solved joint by joint">Truss</button>
+        </div>
+        <div class="group">
+          <button class="tool" type="button" data-tool="select" aria-pressed="true" title="Select and move (V)">Select <kbd>V</kbd></button>
+        </div>
+        <div class="group">
+          <button class="tool" type="button" data-tool="member" aria-pressed="false" title="Draw members or bars (M)"><span class="frame-only">Member</span><span class="truss-only">Bar</span> <kbd>M</kbd></button>
+          <button class="tool frame-only" type="button" data-tool="hinge" aria-pressed="false" title="Hinge: an internal pin (H)">Hinge <kbd>H</kbd></button>
+        </div>
+        <div class="group">
+          <button class="tool" type="button" data-tool="pin" aria-pressed="false" title="Pin support (P)">Pin <kbd>P</kbd></button>
+          <button class="tool" type="button" data-tool="roller" aria-pressed="false" title="Roller support (R)">Roller <kbd>R</kbd></button>
+          <button class="tool frame-only" type="button" data-tool="fixed" aria-pressed="false" title="Fixed support (F)">Fixed <kbd>F</kbd></button>
+        </div>
+        <div class="group">
+          <button class="tool" type="button" data-tool="force" aria-pressed="false" title="Point force (L)">Force <kbd>L</kbd></button>
+          <button class="tool frame-only" type="button" data-tool="moment" aria-pressed="false" title="Applied moment (C)">Moment <kbd>C</kbd></button>
+          <button class="tool frame-only" type="button" data-tool="udl" aria-pressed="false" title="Distributed load (D)">Distributed <kbd>D</kbd></button>
+        </div>
+      </div>
+
+      <div class="views" role="group" aria-label="Diagram view">
+        <button class="tool" type="button" data-view="fbd" aria-pressed="true" title="Free body diagram (1)">Diagram <kbd>1</kbd></button>
+        <button class="tool" type="button" data-view="N" aria-pressed="false" title="Normal force diagram (2)">Normal N <kbd>2</kbd></button>
+        <button class="tool frame-only" type="button" data-view="V" aria-pressed="false" title="Shear (transversal) force diagram (3)">Shear V <kbd>3</kbd></button>
+        <button class="tool frame-only" type="button" data-view="M" aria-pressed="false" title="Bending moment diagram (4)">Moment M <kbd>4</kbd></button>
+      </div>
+
+      <div class="stage">
+        <svg id="canvas" class="tool-select" viewBox="0 0 1000 620" role="img" aria-label="Free body diagram drawing area"></svg>
+      </div>
+
+      <div class="hintbar">
+        <span id="hint"></span>
+        <span id="notice" role="status"></span>
+      </div>
+    </main>
+
+    <aside class="side">
+      <section class="panel" aria-labelledby="props-title">
+        <h2 id="props-title">Selected item</h2>
+        <div id="props"></div>
+      </section>
+      <section class="panel" aria-labelledby="results-title">
+        <h2 id="results-title">Solution</h2>
+        <div id="results" aria-live="polite"></div>
+      </section>
+    </aside>
+  </div>
+
+  <noscript>This tool needs JavaScript to draw and solve problems.</noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

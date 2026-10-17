@@ -1,0 +1,14 @@
+{
+  "name": "Portal frame",
+  "members": [
+    { "id": "m1", "x1": 0, "y1": 0, "x2": 0, "y2": 4 },
+    { "id": "m2", "x1": 0, "y1": 4, "x2": 6, "y2": 4 },
+    { "id": "m3", "x1": 6, "y1": 4, "x2": 6, "y2": 0 }
+  ],
+  "supports": [
+    { "id": "s1", "type": "pin", "x": 0, "y": 0 },
+    { "id": "s2", "type": "roller", "x": 6, "y": 0, "angle": 90 }
+  ],
+  "forces": [{ "id": "f1", "x": 0, "y": 4, "magnitude": 8, "angle": 0 }],
+  "distributed": [{ "id": "w1", "x1": 0, "y1": 4, "x2": 6, "y2": 4, "w": 3, "angle": 270 }]
+}
