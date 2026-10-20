@@ -146,6 +146,12 @@ button, a { -webkit-tap-highlight-color: transparent; }
   justify-content: space-between;
 }
 
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .logo {
   color: var(--text);
   font-size: 1.4rem;
